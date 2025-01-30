@@ -21,6 +21,7 @@ from finrl.meta.preprocessor.yahoodownloader import YahooDownloader
 from finrl.plot import backtest_stats
 from finrl.plot import get_baseline
 from finrl.plot import plot_return
+from finrl.meta.data_processors.processor_alpaca import AlpacaProcessor
 
 # matplotlib.use('Agg')
 
@@ -44,42 +45,29 @@ def stock_trading(
     )
     date_col = "date"
     tic_col = "tic"
-    df = YahooDownloader(
-        start_date=train_start_date, end_date=trade_end_date, ticker_list=DOW_30_TICKER
-    ).fetch_data()
-    fe = FeatureEngineer(
-        use_technical_indicator=True,
-        tech_indicator_list=INDICATORS,
-        use_vix=True,
-        use_turbulence=True,
-        user_defined_feature=False,
-    )
+    
+    symbols = ['AMZN','NVDA','MSFT','ORCL','GOOGL','META','TSLA', 'SPY']
 
-    processed = fe.preprocess_data(df)
-    list_ticker = processed[tic_col].unique().tolist()
-    list_date = list(
-        pd.date_range(processed[date_col].min(), processed[date_col].max()).astype(str)
-    )
-    combination = list(itertools.product(list_date, list_ticker))
 
-    init_train_trade_data = pd.DataFrame(
-        combination, columns=[date_col, tic_col]
-    ).merge(processed, on=[date_col, tic_col], how="left")
-    init_train_trade_data = init_train_trade_data[
-        init_train_trade_data[date_col].isin(processed[date_col])
-    ]
-    init_train_trade_data = init_train_trade_data.sort_values([date_col, tic_col])
+    alpaca = AlpacaProcessor(API_KEY='PKB2PY7303VGIKFLW3O8', API_SECRET='qa2nftQMSEIlFN4ShWSS2BCDCD5tlR10FIGyJNhw')
+    df = alpaca.download_data(symbols, start_date=train_start_date, end_date=trade_end_date, time_interval='1Min')
+    processed = alpaca.clean_data(df)
+    processed = alpaca.add_technical_indicator(processed, tech_indicator_list=INDICATORS)
+    processed = alpaca.add_vix(processed)
+    processed = alpaca.add_turbulence(processed)
+    processed['date'] = processed['timestamp']
+    
+    
+    processed.sort_values(['date','tic'],ignore_index=True)
 
-    init_train_trade_data = init_train_trade_data.fillna(0)
+    train = data_split(processed, train_start_date,train_end_date)
+    trade = data_split(processed, trade_start_date,trade_end_date)
+    train_length = len(train)
+    trade_length = len(trade)
+    print(train_length)
+    print(trade_length)
 
-    init_train_data = data_split(
-        init_train_trade_data, train_start_date, train_end_date
-    )
-    init_trade_data = data_split(
-        init_train_trade_data, trade_start_date, trade_end_date
-    )
-
-    stock_dimension = len(init_train_data.tic.unique())
+    stock_dimension = len(train.tic.unique())
     state_space = 1 + 2 * stock_dimension + len(INDICATORS) * stock_dimension
     print(f"Stock Dimension: {stock_dimension}, State Space: {state_space}")
     buy_cost_list = sell_cost_list = [0.001] * stock_dimension
@@ -99,7 +87,7 @@ def stock_trading(
         "reward_scaling": 1e-4,
     }
 
-    e_train_gym = StockTradingEnv(df=init_train_data, **env_kwargs)
+    e_train_gym = StockTradingEnv(df=train, **env_kwargs)
 
     env_train, _ = e_train_gym.get_sb_env()
     print(type(env_train))
@@ -113,7 +101,7 @@ def stock_trading(
         # Set new logger
         model_a2c.set_logger(new_logger_a2c)
         trained_a2c = agent.train_model(
-            model=model_a2c, tb_log_name="a2c", total_timesteps=50000
+            model=model_a2c, tb_log_name="a2c", total_timesteps=500_000
         )
 
     if if_using_ddpg:
@@ -125,7 +113,7 @@ def stock_trading(
         # Set new logger
         model_ddpg.set_logger(new_logger_ddpg)
         trained_ddpg = agent.train_model(
-            model=model_ddpg, tb_log_name="ddpg", total_timesteps=50000
+            model=model_ddpg, tb_log_name="ddpg", total_timesteps=500_000
         )
 
     if if_using_ppo:
@@ -143,7 +131,7 @@ def stock_trading(
         # Set new logger
         model_ppo.set_logger(new_logger_ppo)
         trained_ppo = agent.train_model(
-            model=model_ppo, tb_log_name="ppo", total_timesteps=50000
+            model=model_ppo, tb_log_name="ppo", total_timesteps=500_000
         )
 
     if if_using_sac:
@@ -162,7 +150,7 @@ def stock_trading(
         # Set new logger
         model_sac.set_logger(new_logger_sac)
         trained_sac = agent.train_model(
-            model=model_sac, tb_log_name="sac", total_timesteps=50000
+            model=model_sac, tb_log_name="sac", total_timesteps=500_000
         )
 
     if if_using_td3:
@@ -175,14 +163,14 @@ def stock_trading(
         # Set new logger
         model_td3.set_logger(new_logger_td3)
         trained_td3 = agent.train_model(
-            model=model_td3, tb_log_name="td3", total_timesteps=50000
+            model=model_td3, tb_log_name="td3", total_timesteps=500_000
         )
 
     # trade
     e_trade_gym = StockTradingEnv(
-        df=init_trade_data,
+        df=trade,
         turbulence_threshold=70,
-        risk_indicator_col="vix",
+        risk_indicator_col="VIXY",
         **env_kwargs,
     )
     # env_trade, obs_trade = e_trade_gym.get_sb_env()
@@ -238,10 +226,10 @@ def stock_trading(
         actions_sac.to_csv("actions_sac.csv") if if_using_sac else None
 
     # dji
-    dji_ = get_baseline(ticker="^DJI", start=trade_start_date, end=trade_end_date)
+    dji_ = get_baseline(ticker="SPY", start=trade_start_date, end=trade_end_date)
     dji = pd.DataFrame()
     dji[date_col] = dji_[date_col]
-    dji["DJI"] = dji_["close"]
+    dji["SPY"] = dji_["close"]
     # select the rows between trade_start and trade_end (not included), since some values may not in this region
     dji = dji.loc[
         (dji[date_col] >= trade_start_date) & (dji[date_col] < trade_end_date)
@@ -275,7 +263,7 @@ def stock_trading(
             col_strategies.append(col)
 
     # make sure that the first row of DJI is initial_amount
-    col = "DJI"
+    col = "SPY"
     result[col] = result[col] / result[col].iloc[0] * initial_amount
     result = result.reset_index(drop=True)
 

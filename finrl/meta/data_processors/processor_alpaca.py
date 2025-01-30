@@ -18,7 +18,24 @@ from stockstats import StockDataFrame as Sdf
 
 
 class AlpacaProcessor:
-    def __init__(self, API_KEY=None, API_SECRET=None, API_BASE_URL=None, client=None):
+    def __init__(self, 
+                 API_KEY=None, 
+                 API_SECRET=None, 
+                 API_BASE_URL=None, 
+                 client=None,
+                 use_technical_indicator=True,
+                 tech_indicator_list=config.INDICATORS,
+                 use_vix=False,
+                 use_turbulence=False,
+                 user_defined_feature=False,):
+        
+        
+        self.use_technical_indicator = use_technical_indicator
+        self.tech_indicator_list = tech_indicator_list
+        self.use_vix = use_vix
+        self.use_turbulence = use_turbulence
+        self.user_defined_feature = user_defined_feature
+        
         if client is None:
             try:
                 self.client = StockHistoricalDataClient(API_KEY, API_SECRET)
@@ -39,7 +56,7 @@ class AlpacaProcessor:
         return bars
 
     def download_data(
-        self, ticker_list, start_date, end_date, time_interval
+        self, ticker_list, start_date, end_date, time_interval, 
     ) -> pd.DataFrame:
         """
         Downloads data using Alpaca's tradeapi.REST method.
@@ -132,6 +149,38 @@ class AlpacaProcessor:
         data_df = data_df.reset_index(drop=True)
 
         return data_df
+
+    def preprocess_data(self, df):
+        """main method to do the feature engineering
+        @:param config: source dataframe
+        @:return: a DataMatrices object
+        """
+        # clean data
+        df = self.clean_data(df)
+
+        # add technical indicators using stockstats
+        if self.use_technical_indicator:
+            df = self.add_technical_indicator(df)
+            print("Successfully added technical indicators")
+
+        # add vix for multiple stock
+        if self.use_vix:
+            df = self.add_vix(df)
+            print("Successfully added vix")
+
+        # add turbulence index for multiple stock
+        if self.use_turbulence:
+            df = self.add_turbulence(df)
+            print("Successfully added turbulence index")
+
+        # add user defined feature
+        if self.user_defined_feature:
+            df = self.add_user_defined_feature(df)
+            print("Successfully added user defined features")
+
+        # fill the missing values at the beginning and the end
+        df = df.ffill().bfill()
+        return df
 
     @staticmethod
     def clean_individual_ticker(args):
@@ -412,9 +461,10 @@ class AlpacaProcessor:
         self, ticker_list, time_interval, tech_indicator_list, limit=100
     ) -> pd.DataFrame:
         data_df = pd.DataFrame()
+        
         for tic in ticker_list:
             request_params = StockBarsRequest(
-                symbol_or_symbols=[tic], timeframe=TimeFrame.Minute, limit=limit
+                symbol_or_symbols=[tic], timeframe=time_interval, limit=limit
             )
 
             barset = self.client.get_stock_bars(request_params).df
@@ -429,12 +479,12 @@ class AlpacaProcessor:
             # Set 'timestamp' as the new index
             if "level_0" in barset.columns:
                 barset.rename(columns={"level_0": "symbol"}, inplace=True)
-            if "level_1" in bars.columns:
+            if "level_1" in barset.columns:
                 barset.rename(columns={"level_1": "timestamp"}, inplace=True)
             barset.set_index("timestamp", inplace=True)
 
             # Reorder and rename columns as needed
-            barset = bars[
+            barset = barset[
                 [
                     "close",
                     "high",
