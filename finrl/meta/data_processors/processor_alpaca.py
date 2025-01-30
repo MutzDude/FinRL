@@ -12,6 +12,7 @@ import pytz
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from finrl.config import INDICATORS
 from stockstats import StockDataFrame as Sdf
 
 # import alpaca_trade_api as tradeapi
@@ -24,7 +25,7 @@ class AlpacaProcessor:
                  API_BASE_URL=None, 
                  client=None,
                  use_technical_indicator=True,
-                 tech_indicator_list=config.INDICATORS,
+                 tech_indicator_list=INDICATORS,
                  use_vix=False,
                  use_turbulence=False,
                  user_defined_feature=False,):
