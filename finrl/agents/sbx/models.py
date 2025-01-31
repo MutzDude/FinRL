@@ -5,11 +5,7 @@ import time
 
 import numpy as np
 import pandas as pd
-from stable_baselines3 import A2C
-from stable_baselines3 import DDPG
-from stable_baselines3 import PPO
-from stable_baselines3 import SAC
-from stable_baselines3 import TD3
+from sbx import DDPG, DQN, PPO, SAC, TD3, TQC
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
@@ -19,7 +15,7 @@ from finrl import config
 from finrl.meta.env_stock_trading.env_stocktrading import StockTradingEnv
 from finrl.meta.preprocessor.preprocessors import data_split
 
-MODELS = {"a2c": A2C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
+MODELS = {"ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
 
 MODEL_KWARGS = {x: config.__dict__[f"{x.upper()}_PARAMS"] for x in MODELS.keys()}
 
@@ -420,7 +416,6 @@ class DRLEnsembleAgent:
 
     def run_ensemble_strategy(
         self,
-        A2C_model_kwargs,
         PPO_model_kwargs,
         DDPG_model_kwargs,
         SAC_model_kwargs,
@@ -429,7 +424,6 @@ class DRLEnsembleAgent:
     ):
         # Model Parameters
         kwargs = {
-            "a2c": A2C_model_kwargs,
             "ppo": PPO_model_kwargs,
             "ddpg": DDPG_model_kwargs,
             "sac": SAC_model_kwargs,
@@ -438,7 +432,7 @@ class DRLEnsembleAgent:
         # Model Sharpe Ratios
         model_dct = {k: {"sharpe_list": [], "sharpe": -1} for k in MODELS.keys()}
 
-        """Ensemble Strategy that combines A2C, PPO, DDPG, SAC, and TD3"""
+        """Ensemble Strategy that combines PPO, DDPG, SAC, and TD3"""
         print("============Start Ensemble Strategy============")
         # for ensemble model, it's necessary to feed the last state
         # of the previous model to the current model as the initial state
@@ -647,7 +641,6 @@ class DRLEnsembleAgent:
                 validation_start_date_list,
                 validation_end_date_list,
                 model_use,
-                model_dct["a2c"]["sharpe_list"],
                 model_dct["ppo"]["sharpe_list"],
                 model_dct["ddpg"]["sharpe_list"],
                 model_dct["sac"]["sharpe_list"],
@@ -659,7 +652,6 @@ class DRLEnsembleAgent:
             "Val Start",
             "Val End",
             "Model Used",
-            "A2C Sharpe",
             "PPO Sharpe",
             "DDPG Sharpe",
             "SAC Sharpe",
